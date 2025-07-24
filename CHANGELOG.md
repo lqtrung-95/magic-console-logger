@@ -1,6 +1,45 @@
 # Change Log
 
-## [1.0.0] - 2024-07-22
+## [2.0.0] - 2025-07-24
+
+### 🚀 Major New Features
+
+- **Styled Console Logs**: Beautiful console output with vibrant highlighting
+  - Added `%c` CSS styling with bright orange background (#ff6b35) and white text
+  - Enhanced padding (4px 8px) and border-radius (4px) for better visibility
+  - Bold font weight for maximum impact
+  - Magic wand emoji (🪄) prefix for easy visual scanning
+  - **Self-Contained Format**: Clean, single-line logs with no dependencies
+    - Before: 5-line verbose console.log statements  
+    - After: `console.log(\`%c🪄 variable\`, \`style...\`, variable);`
+    - No helper functions or imports required!
+  
+- **Function Logging Support**: Smart function detection and placement
+  - Automatically detects when a function is selected
+  - Inserts logs after function body instead of inside for better debugging
+  - Supports multiple function types:
+    - Named functions (`function myFunc() {}`)
+    - Arrow functions (`const myFunc = () => {}`)
+    - React hooks (`useCallback`, `useMemo`, `useEffect`)
+    - Object methods
+  - Uses function name as log identifier
+
+### 🛠️ Enhancements
+
+- Enhanced AST parsing for better function detection
+- **Auto-Formatter Compatibility**: Full support for Prettier and other formatters
+  - Detects magic logs whether single-line or multi-line formatted
+  - Delete/comment/uncomment works on Prettier-formatted logs
+- Improved multi-line log statement handling in cleanup operations
+- Updated all management commands to work with new styled format
+- Backward compatibility with existing v1.0.0 logs
+
+### 📝 Breaking Changes
+
+- Console log format changed from simple string to styled format
+- Function logging now places logs after function body (not inside)
+
+## [1.0.0] - 2025-07-22
 
 ### Added
 
