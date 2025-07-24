@@ -100,7 +100,7 @@ function getFunctionInfo(editor: vscode.TextEditor, selection: vscode.Selection)
   try {
     const document = editor.document;
     const text = document.getText();
-    const selectedText = document.getText(selection);
+    const selectedText = document.getText(selection).trim();
 
     // Parse the code using Babel
     const ast = parse(text, {
@@ -113,13 +113,38 @@ function getFunctionInfo(editor: vscode.TextEditor, selection: vscode.Selection)
     const selectionEnd = selection.end.line + 1;
 
     traverse(ast, {
-      Function(path: NodePath<t.Function>) {
+      // Handle CallExpression for hooks like useCallback, useMemo, useEffect
+      CallExpression(path: NodePath<t.CallExpression>) {
         const node = path.node;
         if (
           node.loc &&
-          node.loc.start.line <= selectionStart &&
-          node.loc.end.line >= selectionEnd
+          t.isIdentifier(node.callee)
         ) {
+          const hookNames = ['useCallback', 'useMemo', 'useEffect', 'useLayoutEffect'];
+          if (hookNames.includes(node.callee.name)) {
+            const parent = path.parent;
+            let name: string | undefined;
+            
+            if (t.isVariableDeclarator(parent) && t.isIdentifier(parent.id)) {
+              name = parent.id.name;
+              
+              // Only treat as function if the selected text matches the variable name or hook name
+              if (selectedText === name || selectedText === node.callee.name) {
+                functionInfo = {
+                  name: name,
+                  startLine: node.loc.start.line - 1,
+                  endLine: node.loc.end.line - 1,
+                  type: 'hook'
+                };
+              }
+            }
+          }
+        }
+      },
+
+      Function(path: NodePath<t.Function>) {
+        const node = path.node;
+        if (node.loc) {
           let name: string | undefined;
           let type: FunctionInfo['type'] = 'function';
 
@@ -131,14 +156,6 @@ function getFunctionInfo(editor: vscode.TextEditor, selection: vscode.Selection)
             if (t.isVariableDeclarator(parent) && t.isIdentifier(parent.id)) {
               name = parent.id.name;
               type = 'arrow';
-              
-              // Check for React hooks
-              if (name.startsWith('use') || 
-                  selectedText.includes('useCallback') || 
-                  selectedText.includes('useMemo') || 
-                  selectedText.includes('useEffect')) {
-                type = 'hook';
-              }
             } else if (t.isObjectMethod(parent) && t.isIdentifier(parent.key)) {
               name = parent.key.name;
               type = 'method';
@@ -151,38 +168,13 @@ function getFunctionInfo(editor: vscode.TextEditor, selection: vscode.Selection)
             type = 'method';
           }
 
-          functionInfo = {
-            name,
-            startLine: node.loc.start.line - 1, // Convert back to 0-based
-            endLine: node.loc.end.line - 1,
-            type
-          };
-        }
-      },
-      
-      // Handle CallExpression for hooks like useCallback, useMemo, useEffect
-      CallExpression(path: NodePath<t.CallExpression>) {
-        const node = path.node;
-        if (
-          node.loc &&
-          node.loc.start.line <= selectionStart &&
-          node.loc.end.line >= selectionEnd &&
-          t.isIdentifier(node.callee)
-        ) {
-          const hookNames = ['useCallback', 'useMemo', 'useEffect', 'useLayoutEffect'];
-          if (hookNames.includes(node.callee.name)) {
-            const parent = path.parent;
-            let name: string | undefined;
-            
-            if (t.isVariableDeclarator(parent) && t.isIdentifier(parent.id)) {
-              name = parent.id.name;
-            }
-
+          // Only treat as function if the selected text exactly matches the function name
+          if (name && selectedText === name) {
             functionInfo = {
-              name: name || node.callee.name,
-              startLine: node.loc.start.line - 1,
+              name,
+              startLine: node.loc.start.line - 1, // Convert back to 0-based
               endLine: node.loc.end.line - 1,
-              type: 'hook'
+              type
             };
           }
         }
@@ -198,20 +190,41 @@ function getFunctionInfo(editor: vscode.TextEditor, selection: vscode.Selection)
 
 function getFunctionInfoFallback(editor: vscode.TextEditor, selection: vscode.Selection): FunctionInfo | null {
   const document = editor.document;
-  const selectedText = document.getText(selection);
+  const selectedText = document.getText(selection).trim();
   
-  // Check if selection contains function keywords
+  // Only treat as function if the selected text is exactly a function name or contains function definition
+  // Check if the selected text matches function name patterns
+  const functionNamePattern = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+  
+  if (!functionNamePattern.test(selectedText)) {
+    return null; // Not a simple identifier, treat as variable
+  }
+
+  // Look at the current line and surrounding lines to see if this identifier is a function
+  const currentLine = document.lineAt(selection.start.line).text;
+  const lines = [];
+  
+  // Gather context lines (current line + a few around it)
+  for (let i = Math.max(0, selection.start.line - 2); i <= Math.min(document.lineCount - 1, selection.start.line + 2); i++) {
+    lines.push(document.lineAt(i).text);
+  }
+  
+  const contextText = lines.join('\n');
+  
+  // Check if this identifier is defined as a function in the context
   const functionPatterns = [
-    /function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/,
-    /const\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=.*=>/,
-    /let\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=.*=>/,
-    /var\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=.*=>/,
-    /(useCallback|useMemo|useEffect)\s*\(/,
-    /([a-zA-Z_$][a-zA-Z0-9_$]*)\s*[:=]\s*(?:function|\(.*\)\s*=>)/
+    new RegExp(`function\\s+${selectedText}\\s*\\(`),
+    new RegExp(`const\\s+${selectedText}\\s*=.*=>`),
+    new RegExp(`let\\s+${selectedText}\\s*=.*=>`),
+    new RegExp(`var\\s+${selectedText}\\s*=.*=>`),
+    new RegExp(`const\\s+${selectedText}\\s*=\\s*useCallback`),
+    new RegExp(`const\\s+${selectedText}\\s*=\\s*useMemo`),
+    new RegExp(`const\\s+${selectedText}\\s*=\\s*useEffect`),
+    new RegExp(`${selectedText}\\s*[:=]\\s*(?:function|\\(.*\\)\\s*=>)`)
   ];
 
   for (const pattern of functionPatterns) {
-    if (pattern.test(selectedText)) {
+    if (pattern.test(contextText)) {
       // Find the end of the function by looking for closing braces
       let endLine = selection.end.line;
       let braceCount = 0;
@@ -234,17 +247,16 @@ function getFunctionInfoFallback(editor: vscode.TextEditor, selection: vscode.Se
         if (foundOpenBrace && braceCount === 0) break;
       }
 
-      const match = selectedText.match(pattern);
       return {
-        name: match?.[1],
+        name: selectedText,
         startLine: selection.start.line,
         endLine: endLine,
-        type: selectedText.includes('use') ? 'hook' : 'function'
+        type: contextText.includes('useCallback') || contextText.includes('useMemo') || contextText.includes('useEffect') ? 'hook' : 'function'
       };
     }
   }
 
-  return null;
+  return null; // Not a function, treat as variable
 }
 
 function deleteAllLogs() {

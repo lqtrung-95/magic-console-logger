@@ -1,5 +1,14 @@
 # Change Log
 
+## [2.1.0] - 2025-07-24
+
+### Fixed
+- **Variable Detection Fix**: Fixed issue where variables (like `plainOptions` from `useState`) were incorrectly treated as functions, causing logs to be inserted at the end of components instead of right after the current line
+- **Precise Function Detection**: Enhanced function detection to only treat selections as functions when the selected text exactly matches a function name, not just any variable inside a function
+
+### Improved
+- More accurate distinction between variables and functions for proper log placement
+
 ## [2.0.0] - 2025-07-24
 
 ### 🚀 Major New Features

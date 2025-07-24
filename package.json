@@ -2,7 +2,7 @@
   "name": "magic-console-logger",
   "displayName": "Magic Console Logger",
   "description": "Quickly add styled console.log statements with function detection for debugging",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "publisher": "trunglq",
   "author": "trunglq",
   "license": "MIT",
